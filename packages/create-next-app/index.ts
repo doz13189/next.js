@@ -73,7 +73,7 @@ const program = new Command(packageJson.name)
     '--eslint',
     `
 
-  Initialize with eslint config.
+  Initialize with ESLint config.
 `
   )
   .option(
@@ -172,9 +172,29 @@ const program = new Command(packageJson.name)
   Explicitly tell the CLI to skip installing packages
 `
   )
+  .option(
+    '--yes',
+    `
+
+  Use previous preferences or defaults for all options that were not
+  explicitly specified, without prompting.
+`
+  )
   .allowUnknownOption()
   .parse(process.argv)
   .opts()
+
+const defaults = {
+  typescript: true,
+  eslint: true,
+  tailwind: true,
+  app: true,
+  srcDir: false,
+  importAlias: '@/*',
+  customizeImportAlias: false,
+  empty: false,
+  turbo: false,
+}
 
 const packageManager = !!program.useNpm
   ? 'npm'
@@ -267,34 +287,20 @@ async function run(): Promise<void> {
   }
 
   const example = typeof program.example === 'string' && program.example.trim()
-  const preferences = (conf.get('preferences') || {}) as Record<
-    string,
-    boolean | string
-  >
-  /**
-   * If the user does not provide the necessary flags, prompt them for whether
-   * to use TS or JS.
-   */
-  if (!example) {
-    const defaults: typeof preferences = {
-      typescript: true,
-      eslint: true,
-      tailwind: true,
-      app: true,
-      srcDir: false,
-      importAlias: '@/*',
-      customizeImportAlias: false,
-      empty: false,
-      turbo: false,
-    }
-    const getPrefOrDefault = (field: string) =>
-      preferences[field] ?? defaults[field]
 
+  /**
+   * If the user does not provide the necessary flags, prompt them for their
+   * preferences, unless `--yes` option was specified, or when running in CI.
+   */
+  const skipPrompt = ciInfo.isCI || program.yes
+  const preferences = { ...defaults, ...(conf.get('preferences') || {}) }
+
+  if (!example) {
     if (!program.typescript && !program.javascript) {
-      if (ciInfo.isCI) {
+      if (skipPrompt) {
         // default to TypeScript in CI as we can't prompt to
         // prevent breaking setup flows
-        program.typescript = getPrefOrDefault('typescript')
+        program.typescript = preferences.typescript
       } else {
         const styledTypeScript = blue('TypeScript')
         const { typescript } = await prompts(
@@ -302,7 +308,7 @@ async function run(): Promise<void> {
             type: 'toggle',
             name: 'typescript',
             message: `Would you like to use ${styledTypeScript}?`,
-            initial: getPrefOrDefault('typescript'),
+            initial: preferences.typescript,
             active: 'Yes',
             inactive: 'No',
           },
@@ -330,8 +336,8 @@ async function run(): Promise<void> {
       !process.argv.includes('--eslint') &&
       !process.argv.includes('--no-eslint')
     ) {
-      if (ciInfo.isCI) {
-        program.eslint = getPrefOrDefault('eslint')
+      if (skipPrompt) {
+        program.eslint = preferences.eslint
       } else {
         const styledEslint = blue('ESLint')
         const { eslint } = await prompts({
@@ -339,7 +345,7 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'eslint',
           message: `Would you like to use ${styledEslint}?`,
-          initial: getPrefOrDefault('eslint'),
+          initial: preferences.eslint,
           active: 'Yes',
           inactive: 'No',
         })
@@ -352,8 +358,8 @@ async function run(): Promise<void> {
       !process.argv.includes('--tailwind') &&
       !process.argv.includes('--no-tailwind')
     ) {
-      if (ciInfo.isCI) {
-        program.tailwind = getPrefOrDefault('tailwind')
+      if (skipPrompt) {
+        program.tailwind = preferences.tailwind
       } else {
         const tw = blue('Tailwind CSS')
         const { tailwind } = await prompts({
@@ -361,7 +367,7 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'tailwind',
           message: `Would you like to use ${tw}?`,
-          initial: getPrefOrDefault('tailwind'),
+          initial: preferences.tailwind,
           active: 'Yes',
           inactive: 'No',
         })
@@ -374,8 +380,8 @@ async function run(): Promise<void> {
       !process.argv.includes('--src-dir') &&
       !process.argv.includes('--no-src-dir')
     ) {
-      if (ciInfo.isCI) {
-        program.srcDir = getPrefOrDefault('srcDir')
+      if (skipPrompt) {
+        program.srcDir = preferences.srcDir
       } else {
         const styledSrcDir = blue('`src/` directory')
         const { srcDir } = await prompts({
@@ -383,7 +389,7 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'srcDir',
           message: `Would you like your code inside a ${styledSrcDir}?`,
-          initial: getPrefOrDefault('srcDir'),
+          initial: preferences.srcDir,
           active: 'Yes',
           inactive: 'No',
         })
@@ -393,8 +399,8 @@ async function run(): Promise<void> {
     }
 
     if (!process.argv.includes('--app') && !process.argv.includes('--no-app')) {
-      if (ciInfo.isCI) {
-        program.app = getPrefOrDefault('app')
+      if (skipPrompt) {
+        program.app = preferences.app
       } else {
         const styledAppDir = blue('App Router')
         const { appRouter } = await prompts({
@@ -402,17 +408,18 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'appRouter',
           message: `Would you like to use ${styledAppDir}? (recommended)`,
-          initial: getPrefOrDefault('app'),
+          initial: preferences.app,
           active: 'Yes',
           inactive: 'No',
         })
         program.app = Boolean(appRouter)
+        preferences.app = Boolean(appRouter)
       }
     }
 
     if (!program.turbo && !process.argv.includes('--no-turbo')) {
-      if (ciInfo.isCI) {
-        program.turbo = getPrefOrDefault('turbo')
+      if (skipPrompt) {
+        program.turbo = preferences.turbo
       } else {
         const styledTurbo = blue('Turbopack')
         const { turbo } = await prompts({
@@ -420,7 +427,7 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'turbo',
           message: `Would you like to use ${styledTurbo} for ${`next dev`}?`,
-          initial: getPrefOrDefault('turbo'),
+          initial: preferences.turbo,
           active: 'Yes',
           inactive: 'No',
         })
@@ -434,7 +441,7 @@ async function run(): Promise<void> {
       typeof program.importAlias !== 'string' ||
       !importAliasPattern.test(program.importAlias)
     ) {
-      if (ciInfo.isCI) {
+      if (skipPrompt) {
         // We don't use preferences here because the default value is @/* regardless of existing preferences
         program.importAlias = defaults.importAlias
       } else if (process.argv.includes('--no-import-alias')) {
@@ -447,7 +454,7 @@ async function run(): Promise<void> {
           type: 'toggle',
           name: 'customizeImportAlias',
           message: `Would you like to customize the ${styledImportAlias} (${defaults.importAlias} by default)?`,
-          initial: getPrefOrDefault('customizeImportAlias'),
+          initial: preferences.customizeImportAlias,
           active: 'Yes',
           inactive: 'No',
         })
@@ -461,7 +468,7 @@ async function run(): Promise<void> {
             type: 'text',
             name: 'importAlias',
             message: `What ${styledImportAlias} would you like configured?`,
-            initial: getPrefOrDefault('importAlias'),
+            initial: preferences.importAlias,
             validate: (value) =>
               importAliasPattern.test(value)
                 ? true
